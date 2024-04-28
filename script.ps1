@@ -1,20 +1,13 @@
-
-
-# Check if the script is running as administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    # Relaunch the script with elevated permissions
+
     Start-Process powershell -WindowStyle Hidden -ArgumentList "-File `"$PSCommandPath`"" -Verb RunAs
 } else {
-    # Your script code here
-    Write-Host "Running with administrator privileges!"
-    # Continue with the rest of your script code
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Management
 
-    # Define function to get network adapters
     function Get-NetworkAdapters {
-        $adapters = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 }
+        $adapters = Get-WmiObject Win32_NetworkAdapter
         $adapterNames = @()
         foreach ($adapter in $adapters) {
             $adapterNames += $adapter.NetConnectionID
@@ -44,21 +37,17 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
         }
     }
 
-    # Define the form
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "System Tray App"
-    $form.Size = New-Object System.Drawing.Size(0, 0)
+    $iconPath = (Get-Process -Id $PID).Path
+    $tooltip = "Network Manager: Click on a network adapter name to turn it on or off."
 
-    # Define the notify icon
-    $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
-    $iconPath = "C:\Users\shoccho\Downloads\computer.ico"  # Replace with the path to your icon file
+    $notifyIcon = [System.Windows.Forms.NotifyIcon]::new()
     $notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconPath)
-    $notifyIcon.Visible = $true
+    $notifyIcon.Text = $tooltip
+   
+    $done = $false
 
-    # Define the context menu
-    $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $contextMenu = [System.Windows.Forms.ContextMenuStrip]::new()
 
-    # Add network adapter options to the context menu
     $networkAdapters = Get-NetworkAdapters
     foreach ($adapterName in $networkAdapters) {
         $menuItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -66,23 +55,21 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
         $menuItem.Add_Click({ Disable-NetworkAdapter $adapterName })
         $contextMenu.Items.Add($menuItem)
     }
-
-    # Add exit option to the context menu
-    $exitOption = New-Object System.Windows.Forms.ToolStripMenuItem
-    $exitOption.Text = "Exit"
-    $exitOption.Add_Click({ $form.Close() })
-    $contextMenu.Items.Add($exitOption)
-
-    # Set the context menu for the notify icon
+    $menuItemExit = [System.Windows.Forms.ToolStripMenuItem]::new()
+    $menuItemExit.Text = "Quit."
+    $null = $contextMenu.Items.Add($menuItemExit)
     $notifyIcon.ContextMenuStrip = $contextMenu
+    $menuItemExit.add_Click({ $script:done = $true })
 
-    # Show the form
-    $form.Add_Shown({ $form.WindowState = "Minimized" })
-    
-    $objForm.Visible = $false
-    $objForm.WindowState = "minimized"
-    $objForm.ShowInTaskbar = $false
-    $objForm.add_Closing({ $objForm.ShowInTaskBar = $false })
-
-    $form.ShowDialog() | Out-Null
+    $notifyIcon.Visible = $true
+    try {
+        while (-not $done) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -MilliSeconds 100
+        }
+    }
+    finally {
+        $notifyIcon.Dispose()
+        Write-Verbose -Verbose 'Exiting.'
+    }
 }
