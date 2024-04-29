@@ -1,26 +1,17 @@
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
-    Start-Process powershell -WindowStyle Hidden -ArgumentList "-File `"$PSCommandPath`"" -Verb RunAs
+    Start-Process powershell  -ArgumentList "-File `"$PSCommandPath`"" -Verb RunAs
 } else {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Management
-
-    function Get-NetworkAdapters {
-        $adapters = Get-WmiObject Win32_NetworkAdapter
-        $adapterNames = @()
-        foreach ($adapter in $adapters) {
-            $adapterNames += $adapter.NetConnectionID
-        }
-        return $adapterNames
-    }
 
     function Disable-NetworkAdapter {
         param($adapterName)
         try {
             $adapter = Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.NetConnectionID -eq $adapterName }
             if ($adapter) {
-                $enabled = $adapterIndex = Get-NetAdapter | % { Process { If (( $_.Status -eq "up" ) -and ($_.Name -eq $adapterName ) ){ $true } }};
+                $enabled = Get-NetAdapter | % { Process { If (( $_.Status -eq "up" ) -and ($_.Name -eq $adapterName ) ){ $true } }};
 
                 if($enabled){
                     Disable-NetAdapter $adapterName -Confirm:$False
@@ -48,12 +39,19 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
     $contextMenu = [System.Windows.Forms.ContextMenuStrip]::new()
 
-    $networkAdapters = Get-NetworkAdapters
-    foreach ($adapterName in $networkAdapters) {
-        $menuItem = New-Object System.Windows.Forms.ToolStripMenuItem
-        $menuItem.Text = $adapterName
-        $menuItem.Add_Click({ Disable-NetworkAdapter $adapterName })
-        $contextMenu.Items.Add($menuItem)
+    $networkAdapters = Get-WmiObject Win32_NetworkAdapter
+    foreach ($adapter in $networkAdapters) {
+        if ( $adapter.NetConnectionStatus  -in 0, 2, 5 ){
+            $menuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+            $menuItem.Text = $adapter.NetConnectionID
+            if ($adapter.NetConnectionStatus -eq 2){
+
+                $menuItem.Checked = $true;
+            }
+            $adapterName = $adapter.NetConnectionID
+            $menuItem.Add_Click({ Disable-NetworkAdapter $adapterName })
+            $contextMenu.Items.Add($menuItem)
+        }
     }
     $menuItemExit = [System.Windows.Forms.ToolStripMenuItem]::new()
     $menuItemExit.Text = "Quit."
